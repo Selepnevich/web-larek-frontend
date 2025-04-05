@@ -4,9 +4,24 @@ export interface IProduct{
     description: string;
     price: number | null;
     image: string;
-    category: string
+    category: "дополнительное" | "софт-скил" | "кнопка" | "хард-скил" | "другое";
 }
 
-export interface IActions {
-  onClick: (event: MouseEvent) => void;
+export interface IForm {
+    paymentMethod?: string;
+    deliveryAddress?: string;
+    email?: string;
+    phone?: string;
+    render(): HTMLElement;
+    init() : void;
+}
+
+export interface IOrder {
+    paymentMethod: string;
+    deliveryAddress: string;
+}
+
+export interface IPersonalInfo {
+    email: string;
+    phone: string;
 }

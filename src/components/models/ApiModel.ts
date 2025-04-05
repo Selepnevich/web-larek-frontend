@@ -1,7 +1,7 @@
 import { IProduct } from "../../types";
 import { Api, ApiListResponse } from "../base/api"
 
-export class CdnApi extends Api {
+export class ApiModel extends Api {
     readonly cdnUrl: string;
     items: IProduct[];
 

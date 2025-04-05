@@ -1,34 +1,35 @@
 import './scss/styles.scss';
-import { ProductListView, ProductView } from "./components/views/ProductView";
+import { ProductListView } from "./components/views/ProductView";
 import { ModalView } from './components/views/ModalView';
 import { BasketView } from './components/views/BasketView';
 import { Api } from "./components/base/api";
 import { API_URL, CDN_URL } from "./utils/constants"; // API_URL из .env
 import { cloneTemplate, ensureElement } from "./utils/utils";
 import { IProduct } from "./types";
-import { CdnApi } from "./components/models/ApiModel";
+import { ApiModel } from "./components/models/ApiModel";
 import { EventEmitter } from './components/base/events';
+import { OrderForm } from './components/views/OrderFormView';
+import { PersonalInfoForm } from './components/views/PersonalInfoForm';
+import { SuccessView } from './components/views/SuccesssView';
 
-const api = new CdnApi( API_URL, CDN_URL);
+const api = new ApiModel( API_URL, CDN_URL);
 // Шаблоны
 const cardCatalogTemplate = document.querySelector('#card-catalog') as HTMLTemplateElement;
 const cardCatalogPreview = document.querySelector('#card-preview') as HTMLTemplateElement;
 const basketTemplate = document.querySelector('#basket') as HTMLTemplateElement;
-// const modalWindow = document.querySelector('#modal__content') as HTMLTemplateElement;
+const orderTemplate = document.querySelector('#order') as HTMLTemplateElement;
+const personalInfoTemplate = document.querySelector('#contacts') as HTMLTemplateElement;
+const successTemplate = document.querySelector('#success') as HTMLTemplateElement;
+
 
 const catalog = ensureElement<HTMLElement>('.gallery');
 const events = new EventEmitter();
 
 // Представления
 const viewProductList = new ProductListView(cardCatalogTemplate);
-
+const viewProduct = new ProductListView(cardCatalogPreview);
 const basketView = new BasketView(basketTemplate, events);
-
-// const viewModelProduct = new ProductView(modalWindow);
-
-
-const modalTemplate = document.querySelector('#modal__content') as HTMLTemplateElement;
-const modalView = new ModalView();
+const modalView = new ModalView(events);
 
 // Отображение списка продуктов
 api.getListProducts()
@@ -44,20 +45,49 @@ api.getListProducts()
     .catch(error => console.error("Ошибка загрузки продуктов:", error));
 
 
-// Модальное окно для одного продукта
+// Открытие модального окна для одного продукта
 events.on('card:select', (product) => {
-    const viewProduct = new ProductView(cardCatalogPreview, product as IProduct, events);
+
     const item = viewProduct.renderProduct(product as IProduct);
+    const currentBasket = basketView.listElementBasket()
     modalView.setContent(item);
+    modalView.buttonProcessing(product as IProduct, currentBasket);
     modalView.open();
 });
 
-// Взаимодействие с корзиной
+// Открытие модального окна для корзины
 events.on('basket:open', () => {
+
     modalView.setContent(basketView.render());
     modalView.open();
 });
+
+// Открытие модального окна для оформления заказа
 events.on('order:open', () => {
-    // modalView.setContent(basketView.render());
+    const orderView = new OrderForm(orderTemplate, events)
+    modalView.setContent(orderView.render());
     modalView.open();
+});
+
+// Открытие окна для заполнения персональных данных
+events.on('personalInfo:open', () => {
+    const personalInfoView = new PersonalInfoForm (personalInfoTemplate, events)
+    modalView.setContent(personalInfoView.render());
+    modalView.open();
+});
+
+// Открытие окна для успешной оплаты
+
+events.on('success:open', () => {
+    const sumProducts = basketView.getSumAllProducts();
+    const successView = new SuccessView(successTemplate, events, sumProducts);
+    modalView.setContent(successView.render());
+    basketView.renderHeaderBasketCounter(0);
+    basketView.clearBasket();
+    modalView.open();
+});
+
+// Закрытие модального окна
+events.on('model:close', () => {
+    modalView.close();
 });
