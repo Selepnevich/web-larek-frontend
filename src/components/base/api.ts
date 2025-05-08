@@ -1,5 +1,7 @@
+import { IOrder, IOrderResult } from "../../types";
+
 export type ApiListResponse<Type> = {
-    // total: number,
+    total: number,
     items: Type[]
 };
 
@@ -39,4 +41,8 @@ export class Api {
             body: JSON.stringify(data)
         }).then(this.handleResponse);
     }
+
+    createOrder(order: IOrder): Promise<IOrderResult> {
+		return this.post('/order', order).then((data: IOrderResult) => data);
+	}
 }
