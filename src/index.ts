@@ -1,0 +1,217 @@
+import './scss/styles.scss';
+import { ApiListResponse } from './components/base/api';
+import { EventEmitter } from './components/base/events';
+import { ensureElement, cloneTemplate } from './utils/utils';
+import { API_URL, CDN_URL } from './utils/constants'; // API_URL из .env
+import { WebLarekApi } from './components/models/ApiModel';
+import { ProductListView } from './components/views/ProductView';
+import { AppState } from './components/models/AppData';
+import { Page } from './components/views/Page';
+import { ModalView } from './components/views/ModalView';
+import { BasketItemView, BasketView } from './components/views/BasketView';
+import { SuccessView } from './components/views/SuccesssView';
+import { IOrderResult, IProduct } from './types';
+import { IOrderForm, OrderForm } from './components/views/OrderFormView';
+import { ContactForm } from './components/views/ContactFormView';
+
+const api = new WebLarekApi(API_URL, CDN_URL);
+// Шаблоны
+
+const cardCatalogTemplate = ensureElement<HTMLTemplateElement>('#card-catalog');
+const cardCatalogPreview = ensureElement<HTMLTemplateElement>('#card-preview');
+const modalTemplate = ensureElement<HTMLTemplateElement>('#modal-container');
+const basketTemplate = ensureElement<HTMLTemplateElement>('#basket');
+const productBasketTemplate =
+ensureElement<HTMLTemplateElement>('#card-basket');
+const orderTemplate = ensureElement<HTMLTemplateElement>('#order');
+const contactTemplate = ensureElement<HTMLTemplateElement>('#contacts');
+const successTemplate = ensureElement<HTMLTemplateElement>('#success');
+
+const events = new EventEmitter();
+
+// Модель данных
+const appData = new AppState({}, events);
+
+// Компоненты приложения
+const page = new Page(document.body, events);
+const modal = new ModalView(modalTemplate, events);
+const basket = new BasketView(cloneTemplate(basketTemplate), events);
+const orderForm = new OrderForm(cloneTemplate(orderTemplate), events);
+const contactForm = new ContactForm(cloneTemplate(contactTemplate), events);
+
+function renderBasketView(): HTMLElement {
+	const basketItems = appData.basket.items.map((item, index) => {
+		const productItem = new BasketItemView(cloneTemplate(productBasketTemplate), events, {
+			onClick: () => events.emit('basket:delete', item),
+		});
+
+		return productItem.render({
+			title: item.title,
+			price: item.price,
+			index: index + 1,
+		});
+	});
+
+	return basket.render({
+		list: basketItems,
+		price: appData.basket.getTotalPrice(),
+	});
+}
+
+api
+	.getListProducts()
+	.then((products) => {
+		appData.setCatalog(products);
+	})
+	.catch((error) => console.error('Ошибка загрузки продуктов:', error));
+
+// Отображение списка продуктов
+events.on('items:show', () => {
+	page.catalog = appData.catalog.map((item) => {
+		const product = new ProductListView(cloneTemplate(cardCatalogTemplate), {
+			onClick: () => events.emit('card:select', item),
+		});
+		return product.render({
+			id: item.id,
+			title: item.title,
+			image: item.image,
+			category: item.category,
+			price: item.price,
+		});
+	});
+});
+
+// Открытие модального окна для одного продукта
+events.on('card:select', (item: IProduct) => {
+	page.scrollLock = true;
+	const product = new ProductListView(cloneTemplate(cardCatalogPreview), {
+		onClick: () => events.emit('basket:add', item),
+	});
+	const viewProduct = product.render({
+		id: item.id,
+		title: item.title,
+		image: item.image,
+		category: item.category,
+		price: item.price,
+		selected: item.selected,
+	});
+	modal.render({
+		content: viewProduct,
+	});
+});
+
+// Добавление товаров в корзину
+events.on('basket:add', (item: IProduct) => {
+	item.selected = true;
+	appData.basket.add(item);
+	page.counter = appData.basket.getCount();
+	modal.close();
+});
+
+// Открытие модального окна для корзины
+events.on('basket:open', () => {
+	page.scrollLock = true;
+	appData.basket.getState();
+	modal.render({
+		content: renderBasketView(),
+	});
+});
+
+// Удаление товара из корзины
+events.on('basket:delete', (item: IProduct) => {
+	appData.basket.remove(item.id);
+	appData.basket.getState();
+	item.selected = false;
+	page.counter = appData.basket.getCount();
+	modal.render({
+		content: renderBasketView(),
+	});
+});
+
+// Открытие модального окна для оформления заказа
+events.on('order:open', () => {
+	page.scrollLock = true;
+	modal.render({
+		content: orderForm.render({
+			valid: false,
+			errors: [],
+		}),
+	});
+});
+
+// Открытие окна для заполнения персональных данных
+events.on('orderform:submit', () => {
+	modal.render({
+		content: contactForm.render({
+			valid: false,
+			errors: [],
+		}),
+	});
+});
+
+// Проверка валидации заказа
+// Для формы заказа
+events.on(
+	'orderform:change',
+	(data: { field: keyof IOrderForm; value: string }) => {
+		appData.order.setOrderField(data.field, data.value, 'orderform');
+		orderForm.errors = appData.order.errors;
+		orderForm.valid = appData.order.valid;
+	}
+);
+
+// Для формы контактов
+events.on(
+	'contactform:change',
+	(data: { field: keyof IOrderForm; value: string }) => {
+		appData.order.setOrderField(data.field, data.value, 'contactform');
+		contactForm.errors = appData.order.errors;
+		contactForm.valid = appData.order.valid;
+	}
+);
+
+// Покупка товаров
+events.on('contactform:submit', () => {
+	appData.setItemsOrder();
+	appData.setTotalPriceOrder();
+
+    api.sendOrder(appData.order.order)
+        .then((res: IOrderResult) => {
+            events.emit('success:open', res);
+            appData.basket.clean();
+            appData.order.refresh();
+            orderForm.clear();
+            page.counter = 0;
+            appData.resetSelected();
+        })
+        .catch((err) => {
+            console.error('Ошибка оформления заказа:', err);
+            events.emit('order:error', err);
+        });
+});
+
+// Открытие окна для успешной оплаты
+
+events.on('success:open', (res: ApiListResponse<string>) => {
+	const success = new SuccessView(cloneTemplate(successTemplate), events, {
+		onClick: () => events.emit('success:close'),
+	});
+	modal.render({
+		content: success.render({
+			description: res.total,
+		}),
+	});
+});
+
+// Завершение покупки
+events.on('success:close', () => {
+	modal.close();
+});
+
+// Закрытие модального окна
+events.on('modal:close', () => {
+	page.scrollLock = false;
+	appData.order.refresh();
+	orderForm.clear();
+	contactForm.clear();
+});

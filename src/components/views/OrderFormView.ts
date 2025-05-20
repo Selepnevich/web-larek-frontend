@@ -1,0 +1,49 @@
+import { ensureElement } from '../../utils/utils';
+import { IEvents } from '../base/events';
+import { FormView } from './FormView';
+
+export interface IOrderForm {
+	payment: string;
+	address: string;
+}
+
+export class OrderForm extends FormView<IOrderForm> {
+	protected _address: HTMLInputElement;
+	protected _payment = '';
+	protected _buttons: NodeListOf<HTMLButtonElement>;
+
+	constructor(form: HTMLFormElement, protected events: IEvents) {
+		super(form, events);
+
+		this._address = ensureElement<HTMLInputElement>('input[name="address"]', form);
+		this._buttons = form.querySelectorAll('.order__buttons button');
+
+		// навесим слушатели на кнопки способа оплаты
+		this._buttons.forEach((button) => {
+			button.addEventListener('click', () => {
+				this.setPayment(button.name);
+			});
+		});
+	}
+
+	setPayment(method: string) {
+		this._payment = method;
+
+		this._buttons.forEach((button) => {
+			if (button.name === method) {
+				this.toggleClass(button, 'button_alt-active', true);
+			} else {
+				this.toggleClass(button, 'button_alt-active', false);
+			}
+		});
+
+		this.onInputChange('payment', method);
+	}
+
+	clear(): void {
+		this._address.value = '';
+		this._buttons.forEach((button) => {
+			this.toggleClass(button, 'button_alt-active', false);
+		});
+	}
+}
